@@ -13,7 +13,7 @@
 
 **Name** — Vimal  
 **Email** — vimal162002@gmail.com  
-**Live Demo** — [Click here](https://your-app.streamlit.app)  
+**Live Demo** — [Click here](https://research-paper-ai-assistant.streamlit.app/)  
 **Video Explanation** — [Click here](https://your-video-link)
 
 </div>
