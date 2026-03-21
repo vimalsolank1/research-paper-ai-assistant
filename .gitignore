@@ -1,0 +1,14 @@
+# Ignore environment variables
+.env
+
+# Ignore virtual environment
+.venv
+
+# Ignore Python cache
+__pycache__/
+
+# Ignore FAISS vector database
+data/faiss_index/
+
+# Ignore system files
+.DS_Store
