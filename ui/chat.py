@@ -513,48 +513,58 @@ Question: {query}
         # hybrid mode
         if retrieval_mode == "hybrid":
 
-            paper_related = self._is_paper_related(query)
-            realtime = any(w in query_lower for w in ["news", "latest", "today", "current", "recent"])
+            # keep mode as hybrid for UI and source tracking
+            st.session_state.last_answer_meta["answer_type"] = "hybrid"
 
             context_parts = []
 
-            if paper_related and self.vector_store.is_initialized:
+            # try retrieving from research papers first
+            docs = []
+
+            if self.vector_store.is_initialized:
+
                 results = self.retrieve_documents(query)
+
                 docs = [doc for doc, _ in results]
+
+            # if relevant paper chunks found, answer from papers only
+            if docs:
+
                 st.session_state.last_answer_meta["doc_chunks"] = docs
+
                 for doc in docs[:3]:
                     context_parts.append(doc.page_content)
 
-            if realtime or not paper_related:
-                web_docs = self.tavily.search(query)
-                st.session_state.last_answer_meta["web_docs"] = web_docs
-                for w in web_docs[:3]:
-                    context_parts.append(w.page_content)
+            # fallback to web search if papers do not contain answer
+            else:
 
+                web_docs = self.tavily.search(query)
+
+                if web_docs:
+
+                    st.session_state.last_answer_meta["web_docs"] = web_docs
+
+                    for w in web_docs[:3]:
+                        context_parts.append(w.page_content)
+
+            # nothing found from papers or web
             if not context_parts:
                 yield "No relevant content found."
                 return
 
-            used_paper = bool(st.session_state.last_answer_meta["doc_chunks"])
-            used_web = bool(st.session_state.last_answer_meta["web_docs"])
-
-            if used_paper and used_web:
-                st.session_state.last_answer_meta["answer_type"] = "hybrid"
-            elif used_paper:
-                st.session_state.last_answer_meta["answer_type"] = "doc"
-            else:
-                st.session_state.last_answer_meta["answer_type"] = "web"
-
             context = "\n\n".join(context_parts)
 
             prompt = f"""
-Answer using available context. Prefer paper content if relevant.
+        Answer using ONLY the context below.
 
-Context:
-{context}
+        Context:
+        {context}
 
-Question: {query}
-"""
+        Question: {query}
+
+        Answer:
+        """
+
             yield self.rag_chain.llm.invoke(prompt).content
 
     # ----------------------------------------
@@ -568,7 +578,7 @@ Question: {query}
         if not meta:
             return []
 
-        sources = set()
+        sources = set() 
         answer_type = meta.get("answer_type", retrieval_mode)
 
         # paper sources

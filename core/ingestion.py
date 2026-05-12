@@ -1,9 +1,14 @@
 """
-ingestion.py — PDF loading and section-based chunking.
+ingestion.py — Handles PDF loading and section-based chunking.
 
-Instead of splitting by character count, we detect actual section headings
-(Abstract, Introduction, Method, etc.) and create one chunk per section.
-This gives much better retrieval accuracy for academic papers.
+This module extracts structured content from research papers by identifying
+section headings such as Abstract, Introduction, Method, and Conclusion.
+
+Instead of relying on fixed character-based splitting, documents are divided
+into logical sections, with each section stored as a separate chunk.
+
+This approach improves retrieval accuracy and ensures more relevant context
+is passed to the language model during query processing.
 """
 
 from typing import List, Tuple
@@ -18,9 +23,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config.settings import settings
 
 
-# Regex patterns to detect section headings in continuous PDF text.
-# PyPDFLoader outputs text without clean newlines, so we use lookaheads
-# instead of line-start anchors.
+# Regex patterns used to identify section headings in continuous PDF text.
+# Since PyPDFLoader does not preserve clean line breaks, lookahead patterns
+# are used instead of line-start anchors.
 # Format: (pattern, section_label)
 SECTION_BOUNDARIES = [
     (r'\bAbstract\b(?=\s+[A-Z])', "abstract"),

@@ -1,19 +1,8 @@
 """
-MCP Tools for External Research Systems (Part IV, Point 11)
-
-Three tools using Semantic Scholar API (free, no API key needed):
-
-Tool 1 — Paper Metadata Lookup
-    Input:  paper title
-    Output: year, venue, citation count, authors, abstract, URL
-
-Tool 2 — Related Work Discovery
-    Input:  paper title
-    Output: list of semantically related papers
-
-Tool 3 — Trend Analytics
-    Input:  keyword/topic
-    Output: publication frequency over time + top papers on topic
+Semantic Scholar API tools used for:
+- paper metadata lookup
+- related paper discovery
+- research trend analysis
 """
 
 import requests
@@ -22,16 +11,18 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass
 
 
-# Base URL — no API key needed for basic usage
+# Base API URL
 BASE_URL = "https://api.semanticscholar.org/graph/v1"
 
-# Fields to request for paper data
+# Fields fetched from API response
 PAPER_FIELDS = "title,authors,year,venue,citationCount,abstract,url,externalIds"
 
 
 @dataclass
 class PaperMetadata:
-    """Result from Tool 1 — Paper Metadata Lookup"""
+    """
+    Metadata returned from paper lookup.
+    """
     title: str
     authors: List[str]
     year: Optional[int]
@@ -44,7 +35,9 @@ class PaperMetadata:
 
 @dataclass
 class RelatedPaper:
-    """Result from Tool 2 — Related Work Discovery"""
+    """
+    Structure for related paper results.
+    """
     title: str
     authors: List[str]
     year: Optional[int]
@@ -56,25 +49,32 @@ class RelatedPaper:
 
 @dataclass
 class TrendData:
-    """Result from Tool 3 — Trend Analytics"""
+    """
+    Structure for trend analytics results.
+    """
     keyword: str
-    papers_by_year: Dict[int, int]   # year → paper count
-    top_papers: List[Dict]           # most cited papers on topic
+    papers_by_year: Dict[int, int]   # year -> paper count
+    top_papers: List[Dict]           # top cited papers
     total_found: int
 
 
 class SemanticScholarTools:
     """
-    MCP Tools wrapper for Semantic Scholar API.
+    Wrapper around Semantic Scholar API tools.
 
-    All 3 tools are in this one class.
-    Used by Dashboard, Library Chat, and Trends tabs.
+    This class handles:
+    - paper metadata lookup
+    - related paper recommendations
+    - research trend analysis
 
-    No API key needed — free tier allows 100 requests per 5 minutes.
+    Used across dashboard, chat, and trends modules.
     """
 
     def __init__(self):
+
+        # Reusable request session
         self.session = requests.Session()
+
         self.session.headers.update({
             "Accept": "application/json",
             "User-Agent": "ResearchPaperAssistant/1.0"
@@ -82,29 +82,53 @@ class SemanticScholarTools:
 
     def _get(self, endpoint: str, params: dict) -> Optional[dict]:
         """
-        Make GET request to Semantic Scholar API.
-        Returns JSON response or None on failure.
+        Send GET request to Semantic Scholar API.
 
         Handles:
-        - 429 rate limit: waits 10 seconds and retries once
-        - 404 not found: returns None cleanly
-        - Network errors: returns None cleanly
+        - successful responses
+        - retry on API rate limit
+        - connection failures safely
+
+        Args:
+            endpoint: API endpoint path.
+            params: Query parameters for request.
+
+        Returns:
+            Parsed JSON response or None on failure.
         """
         try:
             url = f"{BASE_URL}/{endpoint}"
-            response = self.session.get(url, params=params, timeout=10)
 
+            response = self.session.get(
+                url,
+                params=params,
+                timeout=10
+            )
+
+            # Successful response
             if response.status_code == 200:
                 return response.json()
+
+            # Retry once if API rate limit is hit
             elif response.status_code == 429:
-                # Rate limited — wait longer and retry once
+
                 time.sleep(10)
-                response = self.session.get(url, params=params, timeout=10)
+
+                response = self.session.get(
+                    url,
+                    params=params,
+                    timeout=10
+                )
+
                 if response.status_code == 200:
                     return response.json()
+
                 return None
+
+            # Paper not found
             elif response.status_code == 404:
                 return None
+
             else:
                 return None
 
@@ -113,57 +137,54 @@ class SemanticScholarTools:
 
     def _clean_title(self, title: str) -> str:
         """
-        Clean title before searching Semantic Scholar.
+        Clean extracted paper title before API search.
 
-        PDF extraction often adds noise:
-        - "Attention Is All You Need 1"  (page number)
-        - "ATTENTION IS ALL YOU NEED"    (all caps)
-        - "Attention Is All You Need\n"  (newline)
+        PDF extraction sometimes adds:
+        - page numbers
+        - extra spaces
+        - unwanted characters
 
-        Returns cleaned title for better API match.
+        This improves title matching accuracy.
         """
+
         import re
-        # Remove trailing numbers (page numbers)
+
+        # Remove trailing page numbers
         title = re.sub(r'\s+\d+\s*$', '', title)
-        # Remove newlines and extra spaces
+
+        # Remove extra spaces and newlines
         title = re.sub(r'\s+', ' ', title).strip()
-        # Remove special characters except hyphens and colons
+
+        # Remove unwanted special characters
         title = re.sub(r'[^\w\s\-:,]', '', title)
+
         return title
 
     # ----------------------------------------
     # TOOL 1 — Paper Metadata Lookup
-    # Used in: Dashboard → Paper Viewer
-    # Input: paper title string
-    # Output: PaperMetadata with venue, citations, DOI etc.
+    # Used in Dashboard -> Paper Viewer
     # ----------------------------------------
 
     def lookup_paper_metadata(self, title: str) -> Optional[PaperMetadata]:
         """
-        Tool 1: Look up metadata for a paper by title.
-
-        Real example:
-        Input:  "Attention Is All You Need"
-        Output: PaperMetadata(
-            year=2017, venue="NeurIPS",
-            citation_count=95000, doi="10.48550/arXiv.1706.03762"
-        )
+        Fetch metadata for a research paper using its title.
 
         Args:
-            title: paper title to search for
+            title: Research paper title.
 
         Returns:
-            PaperMetadata or None if not found
+            PaperMetadata object with authors, venue,
+            citations, DOI, abstract, and URL.
         """
 
-        # Clean title before searching
+        # Clean title before API search
         title = self._clean_title(title)
 
-        # Search by title
+        # Search paper by title
         params = {
             "query": title,
             "fields": PAPER_FIELDS,
-            "limit": 1      # we only want the top match
+            "limit": 1
         }
 
         data = self._get("paper/search", params)
@@ -173,14 +194,16 @@ class SemanticScholarTools:
 
         paper = data["data"][0]
 
-        # Extract authors
+        # Extract top author names
         authors = [
             a.get("name", "") for a in paper.get("authors", [])
         ][:5]
 
-        # Extract DOI
+        # Extract DOI or arXiv ID
         doi = ""
+
         external_ids = paper.get("externalIds", {})
+
         if external_ids:
             doi = external_ids.get("DOI", "") or external_ids.get("ArXiv", "")
 
@@ -197,32 +220,25 @@ class SemanticScholarTools:
 
     # ----------------------------------------
     # TOOL 2 — Related Work Discovery
-    # Used in: Library Chat → after any answer
-    # Input: paper title
-    # Output: list of related papers
+    # Used in Library Chat
     # ----------------------------------------
 
     def find_related_papers(self, title: str, limit: int = 5) -> List[RelatedPaper]:
         """
-        Tool 2: Find papers related to a given paper.
+        Find papers related to the given research paper.
 
-        Steps:
-        1. Search for the paper to get its Semantic Scholar ID
-        2. Use the recommendations endpoint to get related papers
-
-        Real example:
-        Input:  "Attention Is All You Need"
-        Output: [BERT, GPT-2, RoBERTa, XLNet, T5]
+        First searches for the paper ID, then fetches
+        recommendations from Semantic Scholar.
 
         Args:
-            title: paper title to find related work for
-            limit: number of related papers to return
+            title: Paper title to search.
+            limit: Number of related papers to return.
 
         Returns:
-            List of RelatedPaper objects
+            List of RelatedPaper objects.
         """
 
-        # Step 1: get paper ID
+        # Search for Semantic Scholar paper ID
         search_params = {
             "query": title,
             "fields": "paperId,title",
@@ -235,10 +251,11 @@ class SemanticScholarTools:
             return []
 
         paper_id = search_data["data"][0].get("paperId")
+
         if not paper_id:
             return []
 
-        # Step 2: get recommendations
+        # Fetch recommended papers
         rec_params = {
             "fields": PAPER_FIELDS,
             "limit": limit
@@ -249,16 +266,20 @@ class SemanticScholarTools:
             rec_params
         )
 
-        # Recommendations endpoint uses different base URL
-        # Fall back to search-based related papers if recommendations fail
+        # Use fallback keyword search if recommendations fail
         if not rec_data:
             return self._search_related_by_keywords(title, limit)
 
         papers = rec_data.get("recommendedPapers", [])
 
         results = []
+
         for p in papers[:limit]:
-            authors = [a.get("name", "") for a in p.get("authors", [])][:3]
+
+            authors = [
+                a.get("name", "") for a in p.get("authors", [])
+            ][:3]
+
             results.append(RelatedPaper(
                 title=p.get("title", ""),
                 authors=authors,
@@ -273,17 +294,25 @@ class SemanticScholarTools:
 
     def _search_related_by_keywords(self, title: str, limit: int) -> List[RelatedPaper]:
         """
-        Fallback for Tool 2 — search by title keywords
-        when recommendations endpoint fails.
+        Fallback related paper search using title keywords.
+
+        Used when the recommendation API fails.
+
+        Args:
+            title: Original paper title.
+            limit: Maximum number of papers to return.
+
+        Returns:
+            List of related papers from keyword search.
         """
 
-        # Use key words from title as search query
+        # Use first few title words as search keywords
         keywords = " ".join(title.split()[:5])
 
         params = {
             "query": keywords,
             "fields": PAPER_FIELDS,
-            "limit": limit + 1   # +1 because we skip the paper itself
+            "limit": limit + 1
         }
 
         data = self._get("paper/search", params)
@@ -292,14 +321,19 @@ class SemanticScholarTools:
             return []
 
         results = []
+
         title_lower = title.lower()
 
         for p in data.get("data", []):
-            # Skip the paper itself
+
+            # Skip original paper from results
             if p.get("title", "").lower() == title_lower:
                 continue
 
-            authors = [a.get("name", "") for a in p.get("authors", [])][:3]
+            authors = [
+                a.get("name", "") for a in p.get("authors", [])
+            ][:3]
+
             results.append(RelatedPaper(
                 title=p.get("title", ""),
                 authors=authors,
@@ -317,37 +351,30 @@ class SemanticScholarTools:
 
     # ----------------------------------------
     # TOOL 3 — Trend Analytics
-    # Used in: Trends Tab → Emerging Topics section
-    # Input: keyword/topic
-    # Output: paper counts per year + top papers
+    # Used in Trends Tab
     # ----------------------------------------
 
     def get_trend_analytics(self, keyword: str, years: int = 8) -> Optional[TrendData]:
         """
-        Tool 3: Get publication trend for a keyword/topic.
+        Analyze publication trends for a research topic.
 
-        Searches Semantic Scholar for papers on the topic,
-        groups results by year to show publication frequency trend.
-
-        Real example:
-        Input:  "transformer attention"
-        Output: TrendData(
-            papers_by_year={2017: 45, 2018: 230, 2019: 890, ...},
-            top_papers=[{title: "BERT", citations: 80000}, ...]
-        )
+        Fetches papers related to the keyword and
+        groups them by publication year.
 
         Args:
-            keyword: topic to analyze
-            years: how many recent years to show
+            keyword: Topic or research area.
+            years: Number of recent years to analyze.
 
         Returns:
-            TrendData or None on failure
+            TrendData object with yearly counts
+            and top cited papers.
         """
 
+        # Fetch papers related to topic
         params = {
             "query": keyword,
             "fields": "title,year,citationCount,authors,venue",
-            "limit": 100    # get 100 papers to analyze trend
+            "limit": 100
         }
 
         data = self._get("paper/search", params)
@@ -358,14 +385,17 @@ class SemanticScholarTools:
         papers = data.get("data", [])
         total = data.get("total", len(papers))
 
-        # Count papers by year
+        # Count papers published per year
         year_counts: Dict[int, int] = {}
+
         for p in papers:
+
             year = p.get("year")
+
             if year and isinstance(year, int):
                 year_counts[year] = year_counts.get(year, 0) + 1
 
-        # Sort by citation count for top papers
+        # Sort papers by citation count
         top_papers = sorted(
             [p for p in papers if p.get("citationCount")],
             key=lambda x: x.get("citationCount", 0),
@@ -373,8 +403,14 @@ class SemanticScholarTools:
         )[:5]
 
         top_papers_clean = []
+
         for p in top_papers:
-            authors = [a.get("name", "") for a in p.get("authors", [])][:2]
+
+            authors = [
+                a.get("name", "") for a in p.get("authors", [])
+            ][:2]
+
+            # Keep only required fields for UI
             top_papers_clean.append({
                 "title": p.get("title", ""),
                 "year": p.get("year"),

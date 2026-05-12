@@ -27,7 +27,10 @@
 Research Paper Assistant lets you upload academic PDFs and interact with them using AI. Ask questions about a single paper, search across your entire library, compare multiple papers, and visualize trends — all powered by RAG, FAISS, and Groq LLM.
 
 ---
-
+![alt text](dashboard_page-0001.jpg)
+![alt text](2d_page-0001.jpg)
+![alt text](3d_page-0001.jpg)
+![alt text](4d_page-0001.jpg)
 ## How it works
 
 ```
